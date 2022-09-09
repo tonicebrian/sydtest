@@ -208,7 +208,7 @@ spec = do
                   property $ \m ->
                     i + j + k + l + m `shouldBe` m + l + k + j + i + (1 :: Int)
       let magnitude :: Int -> Int
-          magnitude = (ceiling :: Double -> Int) . logBase 10 . fromIntegral
+          magnitude = max 0 . (ceiling :: Double -> Int) . logBase 10 . fromIntegral
       describe "labels" $ do
         it "shows the labels in use on success" $
           property $ \xs ->
@@ -248,11 +248,6 @@ spec = do
           forAll (sort <$> arbitrary) $ \xs ->
             tabulate "List elements" (map show xs) $
               sort xs `shouldBe` (xs :: [Int])
-        it "shows the tables in use on success" $
-          forAll (sort <$> arbitrary) $ \xs ->
-            tabulate "List elements" (map show xs) $
-              tabulate "List magnitudes" (map (show . magnitude) xs) $
-                sort xs `shouldBe` (xs :: [Int])
 
   modifyMaxSize (const 30) $ -- Bigger than the 20 below
     modifyMaxShrinks (const 30) $ -- Definitely not zero
