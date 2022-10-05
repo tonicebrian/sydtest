@@ -36,7 +36,7 @@ runSpecForestSynchronously settings = fmap extractNext . goForest (settingRetrie
     goTree :: forall a. Word -> FlakinessMode -> HList a -> TestTree a () -> IO (Next ResultTree)
     goTree retries fm hl = \case
       DefSpecifyNode t td () -> do
-        result <- timeItT $ runSingleTestWithFlakinessMode noProgressReporter hl td fm
+        result <- timeItT $ runSingleTestWithFlakinessMode noProgressReporter hl td retries fm
         let td' = td {testDefVal = result}
         let r = failFastNext (settingFailFast settings) td'
         pure $ SpecifyNode t <$> r
@@ -103,7 +103,7 @@ runSpecForestInterleavedWithOutputSynchronously settings testForest = do
                     [ fore cyan "Test done: ",
                       fore yellow $ chunk t
                     ]
-          result <- timeItT $ runSingleTestWithFlakinessMode progressReporter hl td fm
+          result <- timeItT $ runSingleTestWithFlakinessMode progressReporter hl td retries fm
           let td' = td {testDefVal = result}
           mapM_ (outputLine . pad level) $ outputSpecifyLines level treeWidth t td'
           let r = failFastNext (settingFailFast settings) td'
@@ -141,10 +141,10 @@ runSpecForestInterleavedWithOutputSynchronously settings testForest = do
 
   pure resultForest
 
-runSingleTestWithFlakinessMode :: forall a t. ProgressReporter -> HList a -> TDef (ProgressReporter -> ((HList a -> () -> t) -> t) -> IO TestRunResult) -> FlakinessMode -> IO TestRunResult
-runSingleTestWithFlakinessMode progressReporter l td = \case
+runSingleTestWithFlakinessMode :: forall a t. ProgressReporter -> HList a -> TDef (ProgressReporter -> ((HList a -> () -> t) -> t) -> IO TestRunResult) -> Word -> FlakinessMode -> IO TestRunResult
+runSingleTestWithFlakinessMode progressReporter l td retries = \case
   MayNotBeFlaky -> runFunc
-  MayBeFlakyUpTo retries mMsg -> updateFlakinessMessage <$> go retries
+  MayBeFlaky mMsg -> updateFlakinessMessage <$> go retries
     where
       updateFlakinessMessage :: TestRunResult -> TestRunResult
       updateFlakinessMessage trr = case mMsg of

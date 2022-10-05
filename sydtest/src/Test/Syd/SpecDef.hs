@@ -244,9 +244,7 @@ data ExecutionOrderRandomisation = RandomiseExecutionOrder | DoNotRandomiseExecu
 
 data FlakinessMode
   = MayNotBeFlaky
-  | MayBeFlakyUpTo
-      !Int
-      !(Maybe String) -- A message to show whenever the test is flaky.
+  | MayBeFlaky !(Maybe String) -- A message to show whenever the test is flaky.
 
 type ResultForest = SpecForest (TDef (Timed TestRunResult))
 
