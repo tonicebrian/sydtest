@@ -23,6 +23,9 @@ module Test.Syd.Modify
     withExecutionOrderRandomisation,
     ExecutionOrderRandomisation (..),
 
+    -- * Modifying the number of retries
+    modifyRetries,
+
     -- * Declaring flakiness
     flaky,
     flakyWith,
@@ -76,6 +79,10 @@ randomiseExecutionOrder = withExecutionOrderRandomisation RandomiseExecutionOrde
 -- | Annotate a test group with 'ExecutionOrderRandomisation'.
 withExecutionOrderRandomisation :: ExecutionOrderRandomisation -> TestDefM a b c -> TestDefM a b c
 withExecutionOrderRandomisation p = censor ((: []) . DefRandomisationNode p)
+
+-- | Modify the number of retries to use in flakiness diagnostics.
+modifyRetries :: (Word -> Word) -> TestDefM a b c -> TestDefM a b c
+modifyRetries modRetries = censor ((: []) . DefRetriesNode modRetries)
 
 -- | Mark a test suite as "potentially flaky".
 --

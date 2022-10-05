@@ -112,6 +112,11 @@ data SpecDefTree (outers :: [Type]) inner extra where
     ExecutionOrderRandomisation ->
     SpecDefForest outers inner extra ->
     SpecDefTree outers inner extra
+  DefRetriesNode ::
+    -- | Modify the number of retries
+    (Word -> Word) ->
+    SpecDefForest outers inner extra ->
+    SpecDefTree outers inner extra
   DefFlakinessNode ::
     -- | How many times to retry
     FlakinessMode ->
@@ -134,6 +139,7 @@ instance Functor (SpecDefTree a c) where
           DefAfterAllNode func sdf -> DefAfterAllNode func $ goF sdf
           DefParallelismNode p sdf -> DefParallelismNode p $ goF sdf
           DefRandomisationNode p sdf -> DefRandomisationNode p $ goF sdf
+          DefRetriesNode p sdf -> DefRetriesNode p $ goF sdf
           DefFlakinessNode p sdf -> DefFlakinessNode p $ goF sdf
 
 instance Foldable (SpecDefTree a c) where
@@ -152,6 +158,7 @@ instance Foldable (SpecDefTree a c) where
           DefAfterAllNode _ sdf -> goF sdf
           DefParallelismNode _ sdf -> goF sdf
           DefRandomisationNode _ sdf -> goF sdf
+          DefRetriesNode _ sdf -> goF sdf
           DefFlakinessNode _ sdf -> goF sdf
 
 instance Traversable (SpecDefTree a c) where
@@ -170,6 +177,7 @@ instance Traversable (SpecDefTree a c) where
           DefAfterAllNode func sdf -> DefAfterAllNode func <$> goF sdf
           DefParallelismNode p sdf -> DefParallelismNode p <$> goF sdf
           DefRandomisationNode p sdf -> DefRandomisationNode p <$> goF sdf
+          DefRetriesNode p sdf -> DefRetriesNode p <$> goF sdf
           DefFlakinessNode p sdf -> DefFlakinessNode p <$> goF sdf
 
 filterTestForest :: Maybe Text -> SpecDefForest outers inner result -> SpecDefForest outers inner result
@@ -204,6 +212,7 @@ filterTestForest mf = fromMaybe [] . goForest DList.empty
       DefAfterAllNode func sdf -> DefAfterAllNode func <$> goForest dl sdf
       DefParallelismNode func sdf -> DefParallelismNode func <$> goForest dl sdf
       DefRandomisationNode func sdf -> DefRandomisationNode func <$> goForest dl sdf
+      DefRetriesNode func sdf -> DefRetriesNode func <$> goForest dl sdf
       DefFlakinessNode func sdf -> DefFlakinessNode func <$> goForest dl sdf
 
 randomiseTestForest :: MonadRandom m => SpecDefForest outers inner result -> m (SpecDefForest outers inner result)
@@ -222,6 +231,7 @@ randomiseTestForest = goForest
       DefAroundAllWithNode func sdf -> DefAroundAllWithNode func <$> goForest sdf
       DefAfterAllNode func sdf -> DefAfterAllNode func <$> goForest sdf
       DefParallelismNode func sdf -> DefParallelismNode func <$> goForest sdf
+      DefRetriesNode i sdf -> DefRetriesNode i <$> goForest sdf
       DefFlakinessNode i sdf -> DefFlakinessNode i <$> goForest sdf
       DefRandomisationNode eor sdf ->
         DefRandomisationNode eor <$> case eor of

@@ -66,8 +66,8 @@ data Settings = Settings
     settingFailFast :: !Bool,
     -- | How many iterations to use to look diagnose flakiness
     settingIterations :: !Iterations,
-    -- | How many times to retry a test for automatic flakiness diagnostics
-    settingAutomaticFlakinessDiagnosticsRetries :: !Word,
+    -- | How many times to retry a test for flakiness diagnostics
+    settingRetries :: !Word,
     -- | Whether to fail when any flakiness is detected in tests declared as flaky
     settingFailOnFlaky :: !Bool,
     -- | How to report progress
@@ -94,7 +94,7 @@ defaultSettings =
           settingFilter = Nothing,
           settingFailFast = False,
           settingIterations = OneIteration,
-          settingAutomaticFlakinessDiagnosticsRetries = 3,
+          settingRetries = 3,
           settingFailOnFlaky = False,
           settingReportProgress = ReportNoProgress,
           settingDebug = False
@@ -189,7 +189,7 @@ combineToSettings Flags {..} Environment {..} mConf = do
             (if debugMode then True else d settingFailFast)
             (flagFailFast <|> envFailFast <|> mc configFailFast),
         settingIterations = fromMaybe (d settingIterations) $ flagIterations <|> envIterations <|> mc configIterations,
-        settingAutomaticFlakinessDiagnosticsRetries = fromMaybe (d settingAutomaticFlakinessDiagnosticsRetries) $ flagAutomaticFlakinessDiagnosticsRetries <|> envAutomaticFlakinessDiagnosticsRetries <|> mc configAutomaticFlakinessDiagnosticsRetries,
+        settingRetries = fromMaybe (d settingRetries) $ flagRetries <|> envRetries <|> mc configRetries,
         settingFailOnFlaky = fromMaybe (d settingFailOnFlaky) $ flagFailOnFlaky <|> envFailOnFlaky <|> mc configFailOnFlaky,
         settingReportProgress = setReportProgress,
         settingDebug = debugMode
@@ -218,7 +218,7 @@ data Configuration = Configuration
     configFilter :: !(Maybe Text),
     configFailFast :: !(Maybe Bool),
     configIterations :: !(Maybe Iterations),
-    configAutomaticFlakinessDiagnosticsRetries :: !(Maybe Word),
+    configRetries :: !(Maybe Word),
     configFailOnFlaky :: !(Maybe Bool),
     configReportProgress :: !(Maybe Bool),
     configDebug :: !(Maybe Bool)
@@ -249,7 +249,7 @@ instance HasCodec Configuration where
         <*> optionalField "filter" "Filter to select which parts of the test tree to run" .= configFilter
         <*> optionalField "fail-fast" "Whether to stop executing upon the first test failure" .= configFailFast
         <*> optionalField "iterations" "How many iterations to use to look diagnose flakiness" .= configIterations
-        <*> optionalField "automatic-flakiness-diagnostics-retries" "The number of retries to use for automatic flakiness diagnostics. 0 means 'no automatic flakiness diagnostics'" .= configAutomaticFlakinessDiagnosticsRetries
+        <*> optionalField "retries" "The number of retries to use for flakiness diagnostics. 0 means 'no flakiness diagnostics'" .= configRetries
         <*> optionalField "fail-on-flaky" "Whether to fail when any flakiness is detected in tests marked as potentially flaky" .= configFailOnFlaky
         <*> optionalField "progress" "How to report progres" .= configReportProgress
         <*> optionalField "debug" "Turn on debug-mode. This implies randomise-execution-order: false, parallelism: 1 and fail-fast: true" .= configDebug
@@ -314,7 +314,7 @@ data Environment = Environment
     envFilter :: !(Maybe Text),
     envFailFast :: !(Maybe Bool),
     envIterations :: !(Maybe Iterations),
-    envAutomaticFlakinessDiagnosticsRetries :: !(Maybe Word),
+    envRetries :: !(Maybe Word),
     envFailOnFlaky :: !(Maybe Bool),
     envReportProgress :: !(Maybe Bool),
     envDebug :: !(Maybe Bool)
@@ -338,7 +338,7 @@ defaultEnvironment =
       envFilter = Nothing,
       envFailFast = Nothing,
       envIterations = Nothing,
-      envAutomaticFlakinessDiagnosticsRetries = Nothing,
+      envRetries = Nothing,
       envFailOnFlaky = Nothing,
       envReportProgress = Nothing,
       envDebug = Nothing
@@ -370,7 +370,7 @@ environmentParser =
         <*> Env.var (fmap Just . Env.str) "FILTER" (Env.def Nothing <> Env.help "Filter to select which parts of the test tree to run")
         <*> Env.var (fmap Just . Env.auto) "FAIL_FAST" (Env.def Nothing <> Env.help "Whether to stop executing upon the first test failure")
         <*> Env.var (fmap Just . (Env.auto >=> parseIterations)) "ITERATIONS" (Env.def Nothing <> Env.help "How many iterations to use to look diagnose flakiness")
-        <*> Env.var (fmap Just . Env.auto) "AUTOMATIC_FLAKINESS_DIAGNOSTICS_RETRIES" (Env.def Nothing <> Env.help "The number of retries to use for automatic flakiness diagnostics. 0 means 'no automatic flakiness diagnostics'")
+        <*> Env.var (fmap Just . Env.auto) "RETRIES" (Env.def Nothing <> Env.help "The number of retries to use for flakiness diagnostics. 0 means 'no flakiness diagnostics'")
         <*> Env.var (fmap Just . Env.auto) "FAIL_ON_FLAKY" (Env.def Nothing <> Env.help "Whether to fail when flakiness is detected in tests marked as potentially flaky")
         <*> Env.var (fmap Just . Env.auto) "PROGRESS" (Env.def Nothing <> Env.help "Report progress as tests run")
         <*> Env.var (fmap Just . Env.auto) "DEBUG" (Env.def Nothing <> Env.help "Turn on debug mode. This implies RANDOMISE_EXECUTION_ORDER=False, PARALLELISM=1 and FAIL_FAST=True.")
@@ -437,7 +437,7 @@ data Flags = Flags
     flagFilter :: !(Maybe Text),
     flagFailFast :: !(Maybe Bool),
     flagIterations :: !(Maybe Iterations),
-    flagAutomaticFlakinessDiagnosticsRetries :: !(Maybe Word),
+    flagRetries :: !(Maybe Word),
     flagFailOnFlaky :: !(Maybe Bool),
     flagReportProgress :: !(Maybe Bool),
     flagDebug :: !(Maybe Bool)
@@ -461,7 +461,7 @@ defaultFlags =
       flagFilter = Nothing,
       flagFailFast = Nothing,
       flagIterations = Nothing,
-      flagAutomaticFlakinessDiagnosticsRetries = Nothing,
+      flagRetries = Nothing,
       flagFailOnFlaky = Nothing,
       flagReportProgress = Nothing,
       flagDebug = Nothing
@@ -599,8 +599,8 @@ parseFlags =
       ( option
           auto
           ( mconcat
-              [ long "automatic-flakiness-diagnostics-retries",
-                help "The number of retries to use for automatic flakiness diagnostics. 0 means 'no automatic flakiness diagnostics'"
+              [ long "retries",
+                help "The number of retries to use for flakiness diagnostics. 0 means 'no flakiness diagnostics'"
               ]
           )
       )
