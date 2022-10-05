@@ -264,11 +264,21 @@ spec = do
               () <- readMVar var
               i `shouldSatisfy` (< 20)
 
+  describe "Retries" $ do
+    withoutRetries $
+      it "does not retry if the test is configured withoutRetries" False
+    withRetries 5 $
+      it "Retries this five times" False
+
   describe "Flakiness" $ do
     notFlaky $ it "does not retry if not allowed" False
-    flaky 3 $ do
-      it "can retry booleans" False
-      notFlaky $ it "does not retry booleans that have been explicitly marked as 'notFlaky'" False
+    potentiallyFlaky $ it "can retry booleans" False
+    potentiallyFlakyWith "We're on it!" $ do
+      var <- liftIO $ newMVar (0 :: Int)
+      it "can retry this intentionally flaky test" $ do
+        i <- withMVar var (pure . succ)
+        i `shouldBe` 3
+    flaky 3 $ it "can retry this boolean three times" False
     flakyWith 4 "We're on it!" $ do
       var <- liftIO $ newMVar (0 :: Int)
       it "can retry this intentionally flaky test" $ do

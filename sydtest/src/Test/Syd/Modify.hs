@@ -25,11 +25,15 @@ module Test.Syd.Modify
 
     -- * Modifying the number of retries
     modifyRetries,
+    withoutRetries,
+    withRetries,
 
     -- * Declaring flakiness
     flaky,
     flakyWith,
     notFlaky,
+    potentiallyFlaky,
+    potentiallyFlakyWith,
     withFlakiness,
     FlakinessMode (..),
   )
@@ -84,6 +88,14 @@ withExecutionOrderRandomisation p = censor ((: []) . DefRandomisationNode p)
 modifyRetries :: (Word -> Word) -> TestDefM a b c -> TestDefM a b c
 modifyRetries modRetries = censor ((: []) . DefRetriesNode modRetries)
 
+-- | Turn off retries
+withoutRetries :: TestDefM a b c -> TestDefM a b c
+withoutRetries = modifyRetries (const 0)
+
+-- | Make the number of retries this constant
+withRetries :: Word -> TestDefM a b c -> TestDefM a b c
+withRetries w = modifyRetries (const w)
+
 -- | Mark a test suite as "potentially flaky".
 --
 -- This will retry any test in the given test group up to the given number of tries, and pass a test if it passes once.
@@ -109,6 +121,15 @@ flakyWith i message = modifyRetries (const i) . withFlakiness (MayBeFlaky (Just 
 -- This is useful to have a subgroup of a group marked as 'flaky' that must not be flaky afteral.
 notFlaky :: TestDefM a b c -> TestDefM a b c
 notFlaky = withFlakiness MayNotBeFlaky
+
+-- | Mark a test suite as 'potentially flaky', such that it will not fail if it is
+-- flaky but passes at least once.
+potentiallyFlaky :: TestDefM a b c -> TestDefM a b c
+potentiallyFlaky = withFlakiness (MayBeFlaky Nothing)
+
+-- | Like 'potentiallyFlaky', but with a message.
+potentiallyFlakyWith :: String -> TestDefM a b c -> TestDefM a b c
+potentiallyFlakyWith message = withFlakiness (MayBeFlaky (Just message))
 
 -- | Annotate a test group with 'FlakinessMode'.
 withFlakiness :: FlakinessMode -> TestDefM a b c -> TestDefM a b c
