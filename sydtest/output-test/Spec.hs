@@ -271,11 +271,15 @@ spec = do
       it "Retries this five times" False
 
   describe "Flakiness" $ do
-    notFlaky $ it "does not retry if not allowed" False
     potentiallyFlaky $ it "can retry booleans" False
     potentiallyFlakyWith "We're on it!" $ do
       var <- liftIO $ newMVar (0 :: Int)
       it "can retry this intentionally flaky test" $ do
+        i <- withMVar var (pure . succ)
+        i `shouldBe` 3
+    notFlaky $ do
+      var <- liftIO $ newMVar (0 :: Int)
+      it "Does not allow flakiness if flakiness is not allowed even if retries happen" $ do
         i <- withMVar var (pure . succ)
         i `shouldBe` 3
     flaky 3 $ it "can retry this boolean three times" False

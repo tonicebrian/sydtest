@@ -10,6 +10,8 @@ module Test.Syd.Runner.Synchronous where
 
 import Control.Exception
 import Control.Monad.IO.Class
+import Data.List.NonEmpty (NonEmpty (..))
+import qualified Data.List.NonEmpty as NE
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import Test.Syd.HList
@@ -141,31 +143,85 @@ runSpecForestInterleavedWithOutputSynchronously settings testForest = do
 
   pure resultForest
 
-runSingleTestWithFlakinessMode :: forall a t. ProgressReporter -> HList a -> TDef (ProgressReporter -> ((HList a -> () -> t) -> t) -> IO TestRunResult) -> Word -> FlakinessMode -> IO TestRunResult
-runSingleTestWithFlakinessMode progressReporter l td retries = \case
-  MayNotBeFlaky -> runFunc
-  MayBeFlaky mMsg -> updateFlakinessMessage <$> go retries
-    where
-      updateFlakinessMessage :: TestRunResult -> TestRunResult
-      updateFlakinessMessage trr = case mMsg of
-        Nothing -> trr
-        Just msg -> trr {testRunResultFlakinessMessage = Just msg}
-      go i
-        | i <= 1 = runFunc
-        | otherwise = do
-            result <- runFunc
-            case testRunResultStatus result of
-              TestPassed -> pure result
-              TestFailed -> updateRetriesResult <$> go (pred i)
-        where
-          updateRetriesResult :: TestRunResult -> TestRunResult
-          updateRetriesResult trr =
-            trr
-              { testRunResultRetries =
-                  case testRunResultRetries trr of
-                    Nothing -> Just 1
-                    Just r -> Just (succ r)
-              }
+-- | Run a single test.
+--
+-- Run the test up to 'maxRetries' times.
+-- Finish as soon as the test passes once, or when we run out of retries.
+runSingleTestWithFlakinessMode ::
+  forall externalResources t.
+  -- | How to report test progress
+  ProgressReporter ->
+  -- | External resources
+  HList externalResources ->
+  -- | Test definition
+  TDef
+    ( ProgressReporter ->
+      ((HList externalResources -> () -> t) -> t) ->
+      IO TestRunResult
+    ) ->
+  -- | Max retries
+  Word ->
+  -- | Flakiness mode
+  FlakinessMode ->
+  -- | Test result
+  IO TestRunResult
+runSingleTestWithFlakinessMode progressReporter l td maxRetries fm = do
+  results <- runSingleTestWithRetries progressReporter l td maxRetries
+
+  let wasFlaky = (> 1) $ length $ NE.group $ NE.map testRunResultStatus results
+
+  let lastResult = NE.last results
+
+  pure $
+    lastResult
+      { testRunResultRetries = case NE.length results of
+          1 -> Nothing
+          totalResults -> Just (pred totalResults),
+        testRunResultStatus = case fm of
+          MayNotBeFlaky ->
+            if wasFlaky
+              then TestFailed
+              else testRunResultStatus lastResult
+          MayBeFlaky _ ->
+            if any ((== TestPassed) . testRunResultStatus) results
+              then TestPassed
+              else TestFailed,
+        testRunResultFlakinessMessage = case fm of
+          MayNotBeFlaky -> Nothing
+          MayBeFlaky mmsg ->
+            if wasFlaky
+              then mmsg
+              else Nothing
+      }
+
+runSingleTestWithRetries ::
+  forall externalResources t.
+  -- | How to report test progress
+  ProgressReporter ->
+  -- | External resources
+  HList externalResources ->
+  -- | Test definition
+  TDef
+    ( ProgressReporter ->
+      ((HList externalResources -> () -> t) -> t) ->
+      IO TestRunResult
+    ) ->
+  -- | Max retries
+  Word ->
+  -- If the test ever passed, and the last test result
+  IO (NonEmpty TestRunResult)
+runSingleTestWithRetries progressReporter l td maxRetries = go maxRetries
   where
+    go :: Word -> IO (NonEmpty TestRunResult)
+    go w
+      | w <= 1 = (:| []) <$> runFunc
+      | otherwise = do
+          result <- runFunc
+          case testRunResultStatus result of
+            TestPassed -> pure (result :| [])
+            TestFailed -> do
+              rest <- go (pred w)
+              pure (result NE.<| rest)
+
     runFunc :: IO TestRunResult
     runFunc = testDefVal td progressReporter (\f -> f l ())
