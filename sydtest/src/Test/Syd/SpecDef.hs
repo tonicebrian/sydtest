@@ -246,9 +246,9 @@ data FlakinessMode
   = MayNotBeFlaky
   | MayBeFlaky !(Maybe String) -- A message to show whenever the test is flaky.
 
-type ResultForest = SpecForest (TDef (Timed TestRunResult))
+type ResultForest = SpecForest (TDef (Timed TestRunReport))
 
-type ResultTree = SpecTree (TDef (Timed TestRunResult))
+type ResultTree = SpecTree (TDef (Timed TestRunReport))
 
 computeTestSuiteStats :: ResultForest -> TestSuiteStats
 computeTestSuiteStats = goF []
@@ -332,6 +332,9 @@ instance Monoid TestSuiteStats where
 
 shouldExitFail :: Settings -> ResultForest -> Bool
 shouldExitFail settings = any (any (testFailed settings . timedValue . testDefVal))
+
+testReportFailed :: Settings -> TestRunReport -> Bool
+testReportFailed = undefined
 
 testFailed :: Settings -> TestRunResult -> Bool
 testFailed Settings {..} TestRunResult {..} =
