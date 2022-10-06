@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -21,10 +22,13 @@ import Control.Monad.Random
 import Data.DList (DList)
 import qualified Data.DList as DList
 import Data.Kind
+import Data.List.NonEmpty (NonEmpty (..))
+import qualified Data.List.NonEmpty as NE
 import Data.Maybe
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Word
+import GHC.Generics (Generic)
 import GHC.Stack
 import System.Random.Shuffle
 import Test.QuickCheck.IO ()
@@ -245,38 +249,37 @@ data ExecutionOrderRandomisation = RandomiseExecutionOrder | DoNotRandomiseExecu
 data FlakinessMode
   = MayNotBeFlaky
   | MayBeFlaky !(Maybe String) -- A message to show whenever the test is flaky.
+  deriving (Show, Eq, Generic)
 
 type ResultForest = SpecForest (TDef (Timed TestRunReport))
 
 type ResultTree = SpecTree (TDef (Timed TestRunReport))
 
-computeTestSuiteStats :: ResultForest -> TestSuiteStats
-computeTestSuiteStats = goF []
+computeTestSuiteStats :: Settings -> ResultForest -> TestSuiteStats
+computeTestSuiteStats settings = goF []
   where
     goF :: [Text] -> ResultForest -> TestSuiteStats
     goF ts = foldMap (goT ts)
     goT :: [Text] -> ResultTree -> TestSuiteStats
     goT ts = \case
-      SpecifyNode tn (TDef (Timed TestRunResult {..} t) _) ->
-        TestSuiteStats
-          { testSuiteStatSuccesses = case testRunResultStatus of
-              TestPassed -> 1
-              TestFailed -> 0,
-            testSuiteStatExamples = case testRunResultStatus of
-              TestPassed -> fromMaybe 1 testRunResultNumTests
-              TestFailed -> fromMaybe 1 testRunResultNumTests + fromMaybe 0 testRunResultNumShrinks,
-            testSuiteStatFailures = case testRunResultStatus of
-              TestPassed -> 0
-              TestFailed -> 1,
-            testSuiteStatFlakyTests = case testRunResultStatus of
-              TestFailed -> 0
-              TestPassed -> case testRunResultRetries of
-                Nothing -> 0
-                Just _ -> 1,
-            testSuiteStatPending = 0,
-            testSuiteStatSumTime = t,
-            testSuiteStatLongestTime = Just (T.intercalate "." (ts ++ [tn]), t)
-          }
+      SpecifyNode tn (TDef (Timed testRunReport t) _) ->
+        let status = testRunReportStatus settings testRunReport
+         in TestSuiteStats
+              { testSuiteStatSuccesses = case status of
+                  TestPassed -> 1
+                  TestFailed -> 0,
+                testSuiteStatExamples = testRunReportExamples testRunReport,
+                testSuiteStatFailures = case status of
+                  TestPassed -> 0
+                  TestFailed -> 1,
+                testSuiteStatFlakyTests =
+                  if testRunReportWasFlaky testRunReport
+                    then 1
+                    else 0,
+                testSuiteStatPending = 0,
+                testSuiteStatSumTime = t,
+                testSuiteStatLongestTime = Just (T.intercalate "." (ts ++ [tn]), t)
+              }
       PendingNode _ _ ->
         TestSuiteStats
           { testSuiteStatSuccesses = 0,
@@ -331,16 +334,56 @@ instance Monoid TestSuiteStats where
       }
 
 shouldExitFail :: Settings -> ResultForest -> Bool
-shouldExitFail settings = any (any (testFailed settings . timedValue . testDefVal))
+shouldExitFail settings = any (any (testRunReportFailed settings . timedValue . testDefVal))
 
-testReportFailed :: Settings -> TestRunReport -> Bool
-testReportFailed = undefined
+data TestRunReport = TestRunReport
+  { -- | Raw results, including retries, in order
+    testRunReportRawResults :: !(NonEmpty TestRunResult),
+    testRunReportFlakinessMode :: !FlakinessMode
+  }
+  deriving (Show, Generic)
 
-testFailed :: Settings -> TestRunResult -> Bool
-testFailed Settings {..} TestRunResult {..} =
-  or
-    [ -- Failed
-      testRunResultStatus == TestFailed,
-      -- Passed but flaky and flakiness isn't allowed
-      settingFailOnFlaky && testRunResultStatus == TestPassed && isJust testRunResultRetries
-    ]
+testRunReportReportedRun :: TestRunReport -> TestRunResult
+testRunReportReportedRun = undefined
+
+testRunReportFailed :: Settings -> TestRunReport -> Bool
+testRunReportFailed settings testRunReport =
+  testRunReportStatus settings testRunReport /= TestPassed
+
+testRunReportStatus :: Settings -> TestRunReport -> TestStatus
+testRunReportStatus Settings {..} testRunReport@TestRunReport {..} =
+  let wasFlaky = testRunReportWasFlaky testRunReport
+      lastResult = NE.last testRunReportRawResults
+   in case testRunReportFlakinessMode of
+        MayNotBeFlaky ->
+          if wasFlaky
+            then TestFailed
+            else testRunResultStatus lastResult
+        MayBeFlaky _ ->
+          if settingFailOnFlaky && wasFlaky
+            then TestFailed
+            else
+              if any ((== TestPassed) . testRunResultStatus) testRunReportRawResults
+                then TestPassed
+                else TestFailed
+
+testRunReportExamples :: TestRunReport -> Word
+testRunReportExamples = sum . NE.map testRunResultExamples . testRunReportRawResults
+
+testRunResultExamples :: TestRunResult -> Word
+testRunResultExamples TestRunResult {..} = case testRunResultStatus of
+  TestPassed -> fromMaybe 1 testRunResultNumTests
+  TestFailed -> fromMaybe 1 testRunResultNumTests + fromMaybe 0 testRunResultNumShrinks
+
+testRunReportWasFlaky :: TestRunReport -> Bool
+testRunReportWasFlaky =
+  (> 1)
+    . length
+    . NE.group
+    . NE.map testRunResultStatus
+    . testRunReportRawResults
+
+testRunReportRetries :: TestRunReport -> Maybe Word
+testRunReportRetries TestRunReport {..} = case NE.length testRunReportRawResults of
+  1 -> Nothing
+  l -> Just $ fromIntegral l

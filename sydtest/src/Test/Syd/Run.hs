@@ -421,12 +421,6 @@ instance HasCodec SeedSetting where
         RandomSeed -> Left "random"
         FixedSeed i -> Right i
 
-data TestRunReport = TestRunReport
-  { testRunReportRawResults :: !(NonEmpty TestRunResult),
-    testRunReportFlakinessMessage :: !(Maybe String)
-  }
-  deriving (Show, Generic)
-
 data TestRunResult = TestRunResult
   { testRunResultStatus :: !TestStatus,
     testRunResultException :: !(Maybe SomeException),

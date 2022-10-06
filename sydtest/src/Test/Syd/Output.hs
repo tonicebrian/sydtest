@@ -348,43 +348,44 @@ outputFailures settings rf =
    in map (padding :) $
         filter (not . null) $
           concat $
-            indexed failures $ \w (ts, TDef (Timed TestRunResult {..} _) cs) ->
-              concat
-                [ [ [ fore cyan $
-                        chunk $
-                          T.pack $
-                            replicate 2 ' '
-                              ++ case headMay $ getCallStack cs of
-                                Nothing -> "Unknown location"
-                                Just (_, SrcLoc {..}) ->
-                                  concat
-                                    [ srcLocFile,
-                                      ":",
-                                      show srcLocStartLine
-                                    ]
-                    ],
-                    map
-                      (fore (statusColour testRunResultStatus))
-                      [ chunk $ statusCheckMark testRunResultStatus,
-                        chunk $ T.pack (printf ("%" ++ show nbDigitsInFailureCount ++ "d ") w),
-                        chunk $ T.intercalate "." ts
-                      ]
-                  ],
-                  map padFailureDetails $ retriesChunks testRunResultStatus testRunResultRetries testRunResultFlakinessMessage,
-                  map (padFailureDetails . (: []) . chunk . T.pack) $
-                    case (testRunResultNumTests, testRunResultNumShrinks) of
-                      (Nothing, _) -> []
-                      (Just numTests, Nothing) -> [printf "Failed after %d tests" numTests]
-                      (Just numTests, Just 0) -> [printf "Failed after %d tests" numTests]
-                      (Just numTests, Just numShrinks) -> [printf "Failed after %d tests and %d shrinks" numTests numShrinks],
-                  map (padFailureDetails . (\c -> [chunk "Generated: ", c]) . fore yellow . chunk . T.pack) testRunResultFailingInputs,
-                  map padFailureDetails $ outputFailureLabels testRunResultLabels,
-                  map padFailureDetails $ outputFailureClasses testRunResultClasses,
-                  map padFailureDetails $ maybe [] outputSomeException testRunResultException,
-                  [padFailureDetails $ outputGoldenCase gc | gc <- maybeToList testRunResultGoldenCase],
-                  concat [map padFailureDetails $ stringChunks ei | ei <- maybeToList testRunResultExtraInfo],
-                  [[chunk ""]]
-                ]
+            indexed failures $ \w (ts, TDef (Timed testRunReport@TestRunReport {..} _) cs) ->
+              let TestRunResult {..} = testRunReportReportedRun testRunReport
+               in concat
+                    [ [ [ fore cyan $
+                            chunk $
+                              T.pack $
+                                replicate 2 ' '
+                                  ++ case headMay $ getCallStack cs of
+                                    Nothing -> "Unknown location"
+                                    Just (_, SrcLoc {..}) ->
+                                      concat
+                                        [ srcLocFile,
+                                          ":",
+                                          show srcLocStartLine
+                                        ]
+                        ],
+                        map
+                          (fore (statusColour testRunResultStatus))
+                          [ chunk $ statusCheckMark testRunResultStatus,
+                            chunk $ T.pack (printf ("%" ++ show nbDigitsInFailureCount ++ "d ") w),
+                            chunk $ T.intercalate "." ts
+                          ]
+                      ],
+                      map padFailureDetails $ retriesChunks testRunResultStatus testRunResultRetries testRunResultFlakinessMessage,
+                      map (padFailureDetails . (: []) . chunk . T.pack) $
+                        case (testRunResultNumTests, testRunResultNumShrinks) of
+                          (Nothing, _) -> []
+                          (Just numTests, Nothing) -> [printf "Failed after %d tests" numTests]
+                          (Just numTests, Just 0) -> [printf "Failed after %d tests" numTests]
+                          (Just numTests, Just numShrinks) -> [printf "Failed after %d tests and %d shrinks" numTests numShrinks],
+                      map (padFailureDetails . (\c -> [chunk "Generated: ", c]) . fore yellow . chunk . T.pack) testRunResultFailingInputs,
+                      map padFailureDetails $ outputFailureLabels testRunResultLabels,
+                      map padFailureDetails $ outputFailureClasses testRunResultClasses,
+                      map padFailureDetails $ maybe [] outputSomeException testRunResultException,
+                      [padFailureDetails $ outputGoldenCase gc | gc <- maybeToList testRunResultGoldenCase],
+                      concat [map padFailureDetails $ stringChunks ei | ei <- maybeToList testRunResultExtraInfo],
+                      [[chunk ""]]
+                    ]
 
 outputSomeException :: SomeException -> [[Chunk]]
 outputSomeException outerException =
